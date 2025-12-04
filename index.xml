@@ -6,15 +6,15 @@
       version="2.0">
 <channel>
 <title>Blog de Análise de Dados</title>
-<link>https://seu-blog.com/</link>
-<atom:link href="https://seu-blog.com/index.xml" rel="self" type="application/rss+xml"/>
+<link>https://CauaSilvadSouza.github.io/log/</link>
+<atom:link href="https://CauaSilvadSouza.github.io/log/index.xml" rel="self" type="application/rss+xml"/>
 <description>Projetos de análise de dados com Python</description>
 <generator>quarto-1.8.26</generator>
 <lastBuildDate>Tue, 03 Dec 2024 03:00:00 GMT</lastBuildDate>
 <item>
   <title>Análise de Regressão Linear Simples</title>
   <dc:creator>Caua </dc:creator>
-  <link>https://seu-blog.com/posts/post/</link>
+  <link>https://CauaSilvadSouza.github.io/log/posts/post/</link>
   <description><![CDATA[ 
 
 
@@ -1454,14 +1454,14 @@ font-style: inherit;"> representa o salário base"</span>)</span></code></pre></
   <category>machine learning</category>
   <category>estatística</category>
   <category>python</category>
-  <guid>https://seu-blog.com/posts/post/</guid>
+  <guid>https://CauaSilvadSouza.github.io/log/posts/post/</guid>
   <pubDate>Tue, 03 Dec 2024 03:00:00 GMT</pubDate>
-  <media:content url="https://seu-blog.com/posts/post/thumbnail.png" medium="image" type="image/png"/>
+  <media:content url="https://CauaSilvadSouza.github.io/log/posts/post/thumbnail.png" medium="image" type="image/png"/>
 </item>
 <item>
   <title>Análise de Cotações do Dólar PTAX</title>
   <dc:creator>Caua </dc:creator>
-  <link>https://seu-blog.com/posts/post-with-code/</link>
+  <link>https://CauaSilvadSouza.github.io/log/posts/post-with-code/</link>
   <description><![CDATA[ 
 
 
@@ -3244,14 +3244,14 @@ if (outputEl) {{
   <category>finanças</category>
   <category>visualização</category>
   <category>python</category>
-  <guid>https://seu-blog.com/posts/post-with-code/</guid>
+  <guid>https://CauaSilvadSouza.github.io/log/posts/post-with-code/</guid>
   <pubDate>Tue, 03 Dec 2024 03:00:00 GMT</pubDate>
-  <media:content url="https://seu-blog.com/posts/post-with-code/thumbnail.png" medium="image" type="image/png"/>
+  <media:content url="https://CauaSilvadSouza.github.io/log/posts/post-with-code/thumbnail.png" medium="image" type="image/png"/>
 </item>
 <item>
   <title>Análise de Cotações do Dólar PTAX</title>
   <dc:creator>Caua </dc:creator>
-  <link>https://seu-blog.com/posts/welcome/</link>
+  <link>https://CauaSilvadSouza.github.io/log/posts/welcome/</link>
   <description><![CDATA[ 
 
 
@@ -4344,9 +4344,9 @@ SISTEMA DE CONSULTA - COTAÇÃO DÓLAR PTAX (BCB)
   <category>mapas</category>
   <category>transporte</category>
   <category>python</category>
-  <guid>https://seu-blog.com/posts/welcome/</guid>
+  <guid>https://CauaSilvadSouza.github.io/log/posts/welcome/</guid>
   <pubDate>Tue, 03 Dec 2024 03:00:00 GMT</pubDate>
-  <media:content url="https://seu-blog.com/posts/welcome/thumbnail.png" medium="image" type="image/png"/>
+  <media:content url="https://CauaSilvadSouza.github.io/log/posts/welcome/thumbnail.png" medium="image" type="image/png"/>
 </item>
 </channel>
 </rss>

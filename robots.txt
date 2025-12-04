@@ -1,1 +1,1 @@
-Sitemap: https://seu-blog.com/sitemap.xml
+Sitemap: https://CauaSilvadSouza.github.io/log/sitemap.xml
