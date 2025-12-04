@@ -1,0 +1,366 @@
+---
+title: "Análise de Cotações do Dólar PTAX"
+author: "Caua"
+date: "2024-12-03"
+categories: [api, finanças, visualização, python]
+image: "thumbnail.png"
+description: "Sistema de consulta e visualização de cotações históricas do dólar usando a API do Banco Central do Brasil"
+jupyter: python3
+format:
+  html:
+    code-fold: false
+    code-tools: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+---
+
+## Introdução
+
+Neste projeto, desenvolvemos um sistema para consultar e visualizar cotações históricas do dólar PTAX utilizando a **API pública do Banco Central do Brasil**.
+
+## Importar Bibliotecas
+
+```{python}
+import requests
+import pandas as pd
+import plotly.graph_objects as go
+from datetime import datetime
+import calendar
+```
+
+## Classe Principal
+
+```{python}
+class ConsultadorDolarPTAX:
+    """Classe para consultar e visualizar cotações do dólar"""
+    
+    def __init__(self, periodo: str):
+        self.periodo = periodo
+        self.url_api = "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/"
+        self.dados_processados = None
+        
+    def _converter_periodo(self):
+        """Converte string MMYYYY para objeto datetime"""
+        try:
+            return datetime.strptime(self.periodo, "%m%Y")
+        except ValueError:
+            raise ValueError("Período deve estar no formato MMYYYY")
+    
+    def _montar_url_consulta(self, dt_objeto):
+        """Monta URL de consulta da API"""
+        primeiro_dia = 1
+        ultimo_dia = calendar.monthrange(dt_objeto.year, dt_objeto.month)[1]
+        
+        dt_inicio = f"{dt_objeto.month:02d}-{primeiro_dia:02d}-{dt_objeto.year}"
+        dt_fim = f"{dt_objeto.month:02d}-{ultimo_dia:02d}-{dt_objeto.year}"
+        
+        endpoint = (
+            f"{self.url_api}CotacaoDolarPeriodo(dataInicial=@dataInicial,"
+            f"dataFinalCotacao=@dataFinalCotacao)?"
+            f"@dataInicial='{dt_inicio}'&@dataFinalCotacao='{dt_fim}'&$format=json"
+        )
+        
+        return endpoint, primeiro_dia, ultimo_dia
+    
+    def buscar_cotacoes(self):
+        """Realiza a busca das cotações na API do BCB"""
+        print(f"🔍 Buscando cotações para {self.periodo}...")
+        
+        dt_referencia = self._converter_periodo()
+        url_requisicao, dia_ini, dia_fim = self._montar_url_consulta(dt_referencia)
+        
+        try:
+            resposta = requests.get(url_requisicao, timeout=10)
+            resposta.raise_for_status()
+            dados_json = resposta.json()
+            
+            if not dados_json.get('value'):
+                print(f"⚠️  Nenhuma cotação encontrada para {self.periodo}")
+                return None
+            
+            # Processar dados da API
+            dataframe = pd.DataFrame(dados_json['value'])
+            dataframe['dataHoraCotacao'] = pd.to_datetime(dataframe['dataHoraCotacao'])
+            dataframe['dia'] = dataframe['dataHoraCotacao'].dt.date
+            dataframe = dataframe[['dia', 'cotacaoVenda']].sort_values('dia')
+            
+            print(f"✅ {len(dataframe)} registros obtidos")
+            
+            # Preencher todos os dias do mês
+            dataframe_completo = self._preencher_dias_faltantes(
+                dataframe, dt_referencia, dia_ini, dia_fim
+            )
+            
+            self.dados_processados = dataframe_completo
+            return dataframe_completo
+            
+        except requests.exceptions.Timeout:
+            print("❌ Tempo esgotado ao conectar com a API")
+            return None
+        except requests.exceptions.RequestException as erro:
+            print(f"❌ Erro na requisição: {erro}")
+            return None
+    
+    def _preencher_dias_faltantes(self, df_original, dt_ref, dia_inicial, dia_final):
+        """Preenche dias sem cotação com o último valor disponível"""
+        data_inicio = datetime(dt_ref.year, dt_ref.month, dia_inicial).date()
+        data_fim = datetime(dt_ref.year, dt_ref.month, dia_final).date()
+        
+        # Criar range com todos os dias
+        todos_dias = pd.date_range(start=data_inicio, end=data_fim, freq='D').date
+        df_todos_dias = pd.DataFrame({'dia': todos_dias})
+        
+        # Fazer merge e preencher valores faltantes
+        df_final = df_todos_dias.merge(df_original, on='dia', how='left')
+        df_final['cotacaoVenda'] = df_final['cotacaoVenda'].fillna(method='ffill')
+        df_final.rename(columns={'cotacaoVenda': 'valor_cotacao'}, inplace=True)
+        
+        dias_preenchidos = df_final['valor_cotacao'].notna().sum() - len(df_original)
+        if dias_preenchidos > 0:
+            print(f"📝 {dias_preenchidos} dias foram preenchidos com valores anteriores")
+        
+        return df_final
+    
+    def gerar_grafico(self):
+        """Gera gráfico interativo das cotações"""
+        if self.dados_processados is None:
+            print("❌ Não há dados para gerar o gráfico")
+            return None
+        
+        df = self.dados_processados
+        dt_ref = self._converter_periodo()
+        nome_mes = dt_ref.strftime("%B").upper()
+        
+        # Criar gráfico com plotly graph_objects
+        figura = go.Figure()
+        
+        figura.add_trace(go.Scatter(
+            x=df['dia'],
+            y=df['valor_cotacao'],
+            mode='lines+markers',
+            name='Cotação',
+            line=dict(color='#00a86b', width=2.5),
+            marker=dict(size=5, color='#006b4e'),
+            hovertemplate='<b>Data:</b> %{x}<br><b>Cotação:</b> R$ %{y:.4f}<extra></extra>'
+        ))
+        
+        figura.update_layout(
+            title=f'COTAÇÃO PTAX DO DÓLAR - {nome_mes}/{dt_ref.year}',
+            xaxis_title='Período',
+            yaxis_title='Valor em Reais (R$)',
+            plot_bgcolor='white',
+            hovermode='x unified',
+            height=550
+        )
+        
+        return figura
+    
+    def exibir_estatisticas(self):
+        """Exibe estatísticas do período"""
+        if self.dados_processados is None:
+            return
+        
+        df = self.dados_processados
+        
+        print("\n📊 ESTATÍSTICAS DO PERÍODO:")
+        print("─" * 50)
+        print(f"   Valor mínimo:    R$ {df['valor_cotacao'].min():.4f}")
+        print(f"   Valor máximo:    R$ {df['valor_cotacao'].max():.4f}")
+        print(f"   Valor médio:     R$ {df['valor_cotacao'].mean():.4f}")
+        print(f"   Desvio padrão:   R$ {df['valor_cotacao'].std():.4f}")
+        print(f"   Variação total:  R$ {df['valor_cotacao'].max() - df['valor_cotacao'].min():.4f}")
+        print("─" * 50)
+        
+        return {
+            'minimo': df['valor_cotacao'].min(),
+            'maximo': df['valor_cotacao'].max(),
+            'media': df['valor_cotacao'].mean(),
+            'desvio': df['valor_cotacao'].std()
+        }
+```
+
+## Executando a Consulta
+
+```{python}
+# Criar consultor para Fevereiro de 2019
+periodo_consulta = "022019"
+consultor = ConsultadorDolarPTAX(periodo_consulta)
+```
+
+## Buscar Cotações
+
+```{python}
+# Buscar dados da API
+dados = consultor.buscar_cotacoes()
+```
+
+## Visualizar Dados
+
+```{python}
+# Exibir primeiras linhas
+if dados is not None:
+    print("\n📋 Primeiras 10 cotações:")
+    print(dados.head(10).to_string(index=False))
+```
+
+## Estatísticas do Período
+
+```{python}
+# Calcular e exibir estatísticas
+if dados is not None:
+    stats = consultor.exibir_estatisticas()
+```
+
+## Gráfico Interativo
+
+```{python}
+# Gerar visualização
+if dados is not None:
+    grafico = consultor.gerar_grafico()
+    grafico.show()
+```
+
+## Análise de Variação Diária
+
+```{python}
+if dados is not None:
+    # Calcular variação diária
+    dados['variacao'] = dados['valor_cotacao'].diff()
+    dados['variacao_percentual'] = (dados['variacao'] / dados['valor_cotacao'].shift(1)) * 100
+    
+    print("\n📈 MAIORES VARIAÇÕES:")
+    print("\n🔺 Top 5 Altas:")
+    top_altas = dados.nlargest(5, 'variacao')[['dia', 'valor_cotacao', 'variacao', 'variacao_percentual']]
+    print(top_altas.to_string(index=False))
+    
+    print("\n🔻 Top 5 Quedas:")
+    top_quedas = dados.nsmallest(5, 'variacao')[['dia', 'valor_cotacao', 'variacao', 'variacao_percentual']]
+    print(top_quedas.to_string(index=False))
+```
+
+## Gráfico de Variação
+
+```{python}
+if dados is not None:
+    # Criar gráfico de variação diária
+    fig_var = go.Figure()
+    
+    # Separar variações positivas e negativas
+    var_pos = dados[dados['variacao'] >= 0]
+    var_neg = dados[dados['variacao'] < 0]
+    
+    fig_var.add_trace(go.Bar(
+        x=var_pos['dia'],
+        y=var_pos['variacao'],
+        name='Alta',
+        marker_color='#00a86b'
+    ))
+    
+    fig_var.add_trace(go.Bar(
+        x=var_neg['dia'],
+        y=var_neg['variacao'],
+        name='Queda',
+        marker_color='#e74c3c'
+    ))
+    
+    fig_var.update_layout(
+        title='Variação Diária do Dólar PTAX',
+        xaxis_title='Data',
+        yaxis_title='Variação (R$)',
+        height=400,
+        showlegend=True
+    )
+    
+    fig_var.show()
+```
+
+## Média Móvel
+
+```{python}
+if dados is not None:
+    # Calcular média móvel de 7 dias
+    dados['media_movel_7'] = dados['valor_cotacao'].rolling(window=7).mean()
+    
+    fig_mm = go.Figure()
+    
+    fig_mm.add_trace(go.Scatter(
+        x=dados['dia'],
+        y=dados['valor_cotacao'],
+        mode='lines',
+        name='Cotação Diária',
+        line=dict(color='lightgray', width=1)
+    ))
+    
+    fig_mm.add_trace(go.Scatter(
+        x=dados['dia'],
+        y=dados['media_movel_7'],
+        mode='lines',
+        name='Média Móvel (7 dias)',
+        line=dict(color='#e74c3c', width=3)
+    ))
+    
+    fig_mm.update_layout(
+        title='Cotação vs Média Móvel (7 dias)',
+        xaxis_title='Data',
+        yaxis_title='Valor (R$)',
+        height=450
+    )
+    
+    fig_mm.show()
+```
+
+## Comparação com Outro Período
+
+```{python}
+# Consultar outro período para comparação
+periodo_2 = "022020"  # Fevereiro de 2020
+consultor_2 = ConsultadorDolarPTAX(periodo_2)
+dados_2 = consultor_2.buscar_cotacoes()
+```
+
+```{python}
+# Comparar os dois períodos
+if dados_2 is not None:
+    fig_comp = go.Figure()
+    
+    fig_comp.add_trace(go.Scatter(
+        x=list(range(len(dados))),
+        y=dados['valor_cotacao'],
+        mode='lines',
+        name='Fevereiro 2019',
+        line=dict(color='#3498db', width=2)
+    ))
+    
+    fig_comp.add_trace(go.Scatter(
+        x=list(range(len(dados_2))),
+        y=dados_2['valor_cotacao'],
+        mode='lines',
+        name='Fevereiro 2020',
+        line=dict(color='#e74c3c', width=2)
+    ))
+    
+    fig_comp.update_layout(
+        title='Comparação: Fevereiro 2019 vs 2020',
+        xaxis_title='Dia do Mês',
+        yaxis_title='Cotação (R$)',
+        height=450
+    )
+    
+    fig_comp.show()
+    
+    print("\n📊 COMPARAÇÃO ENTRE PERÍODOS:")
+    print(f"  Fev/2019 - Média: R$ {dados['valor_cotacao'].mean():.4f}")
+    print(f"  Fev/2020 - Média: R$ {dados_2['valor_cotacao'].mean():.4f}")
+    print(f"  Diferença: R$ {dados_2['valor_cotacao'].mean() - dados['valor_cotacao'].mean():.4f}")
+    print(f"  Variação %: {((dados_2['valor_cotacao'].mean() / dados['valor_cotacao'].mean()) - 1) * 100:.2f}%")
+```
+
+## Conclusão
+
+Este sistema demonstra como consumir APIs públicas brasileiras para análise financeira, combinando processamento de dados com visualizações profissionais e análises estatísticas.
+
+---
+
+**Tags:** #API #Finanças #Python #DataViz #BancoCentral

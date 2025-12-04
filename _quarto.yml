@@ -1,0 +1,60 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "Blog de Análise de Dados"
+  description: "Projetos de análise de dados com Python"
+  site-url: https://seu-blog.com
+  repo-url: https://github.com/seu-usuario/seu-blog
+  repo-actions: [edit, issue]
+  
+  navbar:
+    background: primary
+    search: true
+    left:
+      - text: "Home"
+        file: index.qmd
+      - text: "Posts"
+        file: posts.qmd
+      - text: "Sobre"
+        file: about.qmd
+    right:
+      - icon: github
+        href: https://github.com/seu-usuario
+      - icon: linkedin
+        href: https://linkedin.com/in/seu-usuario
+
+  sidebar:
+    style: "docked"
+    search: true
+    contents:
+      - section: "Posts Recentes"
+        contents:
+          - posts/regressao-linear/index.qmd
+          - posts/dolar-ptax/index.qmd
+          - posts/rastreamento-onibus/index.qmd
+
+  page-footer:
+    left: "© 2024 Blog de Análise de Dados"
+    right: 
+      - icon: github
+        href: https://github.com/seu-usuario
+      - icon: linkedin  
+        href: https://linkedin.com/in/seu-usuario
+
+format:
+  html:
+    theme: 
+      light: [cosmo, custom.scss]
+      dark: [darkly, custom.scss]
+    css: styles.css
+    toc: true
+    toc-depth: 3
+    code-copy: true
+    code-fold: false
+    code-tools: true
+    link-external-newwindow: true
+    
+execute:
+  freeze: auto

@@ -1,0 +1,311 @@
+---
+title: "Sistema de Rastreamento de Ônibus em Tempo Real"
+author: "Caua"
+date: "2024-12-03"
+categories: [api, mapas, transporte, python]
+image: "thumbnail.png"
+description: "Rastreamento em tempo real de ônibus de São Paulo usando a API SPTrans OlhoVivo com visualização em mapas interativos"
+jupyter: python3
+format:
+  html:
+    code-fold: false
+    code-tools: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+---
+
+## Introdução
+
+Este projeto implementa um **sistema completo de rastreamento de ônibus** da cidade de São Paulo utilizando a API **SPTrans OlhoVivo**.
+
+::: {.callout-warning}
+## ⚠️ Token Necessário
+Para executar este código, você precisa de um token da API SPTrans. Obtenha em: [sptrans.com.br/desenvolvedores](http://www.sptrans.com.br/desenvolvedores/)
+:::
+
+## Importar Bibliotecas
+
+```{python}
+import requests
+import folium
+from folium import Marker, Icon, CircleMarker
+from datetime import datetime
+import pandas as pd
+```
+
+## Classe Principal
+
+```{python}
+class RastreadorOnibusAPI:
+    """Sistema de rastreamento de ônibus usando API SPTrans OlhoVivo"""
+    
+    def __init__(self, chave_api):
+        self.chave_api = chave_api
+        self.sessao_http = requests.Session()
+        self.url_base = "http://api.olhovivo.sptrans.com.br/v2.1"
+        self.autenticado = False
+        
+    def autenticar(self):
+        """Autentica na API da SPTrans"""
+        endpoint = f"{self.url_base}/Login/Autenticar?token={self.chave_api}"
+        
+        try:
+            resposta = self.sessao_http.post(endpoint, timeout=10)
+            
+            if resposta.text.lower() == "true":
+                print("✅ Conexão estabelecida com sucesso!")
+                self.autenticado = True
+                return True
+            else:
+                print("❌ Falha na autenticação - Token inválido")
+                return False
+                
+        except Exception as erro:
+            print(f"❌ Erro na autenticação: {erro}")
+            return False
+    
+    def pesquisar_linhas(self, termo):
+        """Busca linhas de ônibus por termo"""
+        if not self.autenticado:
+            print("❌ Autentique primeiro!")
+            return []
+        
+        endpoint = f"{self.url_base}/Linha/Buscar?termosBusca={termo}"
+        resposta = self.sessao_http.get(endpoint)
+        return resposta.json()
+    
+    def obter_paradas_linha(self, cod_linha):
+        """Obtém todas as paradas de uma linha específica"""
+        if not self.autenticado:
+            print("❌ Autentique primeiro!")
+            return []
+        
+        endpoint = f"{self.url_base}/Parada/BuscarParadasPorLinha?codigoLinha={cod_linha}"
+        resposta = self.sessao_http.get(endpoint)
+        return resposta.json()
+    
+    def obter_posicoes_veiculos(self, cod_linha):
+        """Obtém posições em tempo real dos veículos"""
+        if not self.autenticado:
+            print("❌ Autentique primeiro!")
+            return {}
+        
+        endpoint = f"{self.url_base}/Posicao/Linha?codigoLinha={cod_linha}"
+        resposta = self.sessao_http.get(endpoint)
+        return resposta.json()
+    
+    def gerar_mapa_interativo(self, cod_linha, identificador_linha):
+        """Gera mapa interativo com paradas e veículos"""
+        
+        print(f"\n🗺️  Gerando mapa para linha {identificador_linha}...")
+        
+        # Obter paradas
+        lista_paradas = self.obter_paradas_linha(cod_linha)
+        qtd_paradas = len(lista_paradas)
+        print(f"   📍 Paradas encontradas: {qtd_paradas}")
+        
+        # Obter posições dos veículos
+        dados_veiculos = self.obter_posicoes_veiculos(cod_linha)
+        lista_veiculos = dados_veiculos.get('vs', [])
+        horario_ref = dados_veiculos.get('hr', 'Indisponível')
+        qtd_veiculos = len(lista_veiculos)
+        print(f"   🚌 Veículos em circulação: {qtd_veiculos}")
+        print(f"   🕐 Timestamp: {horario_ref}")
+        
+        # Calcular centro do mapa
+        if lista_paradas:
+            lat_media = sum(parada['py'] for parada in lista_paradas) / qtd_paradas
+            lon_media = sum(parada['px'] for parada in lista_paradas) / qtd_paradas
+        else:
+            # Coordenadas padrão (Centro de São Paulo)
+            lat_media, lon_media = -23.5505, -46.6333
+        
+        # Criar mapa base
+        mapa_folium = folium.Map(
+            location=[lat_media, lon_media],
+            zoom_start=14,
+            tiles='OpenStreetMap',
+            control_scale=True
+        )
+        
+        # Adicionar paradas ao mapa
+        for parada in lista_paradas:
+            info_popup = f"""
+            <div style="font-family: Arial; width: 250px;">
+                <h4 style="margin: 0 0 10px 0; color: #1976D2;">
+                    📍 {parada['np']}
+                </h4>
+                <p style="margin: 5px 0;"><b>Local:</b> {parada['ed']}</p>
+                <p style="margin: 5px 0;"><b>Código:</b> {parada['cp']}</p>
+            </div>
+            """
+            
+            CircleMarker(
+                location=[parada['py'], parada['px']],
+                radius=6,
+                popup=folium.Popup(info_popup, max_width=280),
+                tooltip=f"Parada: {parada['np']}",
+                color='#1976D2',
+                fill=True,
+                fillColor='#2196F3',
+                fillOpacity=0.7
+            ).add_to(mapa_folium)
+        
+        # Adicionar veículos ao mapa
+        for veiculo in lista_veiculos:
+            eh_acessivel = "✓ Sim" if veiculo.get('a', False) else "✗ Não"
+            horario_atualizacao = veiculo.get('ta', 'N/A')
+            prefixo = veiculo['p']
+            
+            info_veiculo = f"""
+            <div style="font-family: Arial; width: 250px;">
+                <h4 style="margin: 0 0 10px 0; color: #D32F2F;">
+                    🚍 Veículo #{prefixo}
+                </h4>
+                <p style="margin: 5px 0;"><b>Acessibilidade:</b> {eh_acessivel}</p>
+                <p style="margin: 5px 0;"><b>Atualizado em:</b> {horario_atualizacao}</p>
+            </div>
+            """
+            
+            Marker(
+                location=[veiculo['py'], veiculo['px']],
+                popup=folium.Popup(info_veiculo, max_width=280),
+                tooltip=f"Ônibus {prefixo}",
+                icon=Icon(color='red', icon='bus', prefix='fa')
+            ).add_to(mapa_folium)
+        
+        print(f"✅ Mapa gerado com sucesso!")
+        
+        return mapa_folium, {
+            'paradas': qtd_paradas,
+            'veiculos': qtd_veiculos,
+            'horario': horario_ref
+        }
+```
+
+## Demonstração com Dados de Exemplo
+
+Como a API requer autenticação, vamos demonstrar o funcionamento com dados simulados:
+
+```{python}
+# Simular dados de uma linha de ônibus
+dados_exemplo = {
+    'linhas': [
+        {'cl': 2503, 'lt': '2780-10', 'tp': 'TERM. CAPELINHA', 'ts': 'JD. ÂNGELA'},
+        {'cl': 2504, 'lt': '477P-10', 'tp': 'TERM. PARQUE D. PEDRO II', 'ts': 'BROOKLIN'},
+        {'cl': 2505, 'lt': '5154-10', 'tp': 'METRÔ ANA ROSA', 'ts': 'METRÔ TUCURUVI'},
+    ],
+    'paradas': [
+        {'cp': 340015333, 'np': 'PARADA EXEMPLO 1', 'ed': 'Av. Paulista, 1000', 'py': -23.5631, 'px': -46.6544},
+        {'cp': 340015334, 'np': 'PARADA EXEMPLO 2', 'ed': 'Av. Paulista, 1500', 'py': -23.5615, 'px': -46.6558},
+        {'cp': 340015335, 'np': 'PARADA EXEMPLO 3', 'ed': 'Av. Paulista, 2000', 'py': -23.5599, 'px': -46.6572},
+    ],
+    'veiculos': [
+        {'p': 12345, 'a': True, 'ta': '10:30', 'py': -23.5620, 'px': -46.6550},
+        {'p': 12346, 'a': False, 'ta': '10:32', 'py': -23.5610, 'px': -46.6565},
+    ]
+}
+
+print("📋 DADOS DE EXEMPLO - LINHA 2780-10")
+print("="*60)
+```
+
+## Visualizar Linhas Disponíveis
+
+```{python}
+# Mostrar linhas de exemplo
+df_linhas = pd.DataFrame(dados_exemplo['linhas'])
+print("\n🚌 Linhas Disponíveis:")
+print(df_linhas.to_string(index=False))
+```
+
+## Visualizar Paradas
+
+```{python}
+# Mostrar paradas de exemplo
+df_paradas = pd.DataFrame(dados_exemplo['paradas'])
+print("\n📍 Paradas da Linha:")
+print(df_paradas[['cp', 'np', 'ed']].to_string(index=False))
+```
+
+## Visualizar Veículos em Circulação
+
+```{python}
+# Mostrar veículos de exemplo
+df_veiculos = pd.DataFrame(dados_exemplo['veiculos'])
+df_veiculos['Acessível'] = df_veiculos['a'].map({True: 'Sim', False: 'Não'})
+print("\n🚍 Veículos Ativos:")
+print(df_veiculos[['p', 'Acessível', 'ta']].rename(columns={
+    'p': 'Prefixo',
+    'ta': 'Última Atualização'
+}).to_string(index=False))
+```
+
+## Criar Mapa Interativo
+
+```{python}
+# Criar mapa com dados de exemplo
+mapa = folium.Map(
+    location=[-23.5620, -46.6558],
+    zoom_start=15,
+    tiles='OpenStreetMap'
+)
+
+# Adicionar paradas
+for parada in dados_exemplo['paradas']:
+    info = f"""
+    <div style="font-family: Arial;">
+        <h4 style="color: #1976D2;">📍 {parada['np']}</h4>
+        <p><b>Local:</b> {parada['ed']}</p>
+        <p><b>Código:</b> {parada['cp']}</p>
+    </div>
+    """
+    
+    CircleMarker(
+        location=[parada['py'], parada['px']],
+        radius=8,
+        popup=folium.Popup(info, max_width=300),
+        tooltip=parada['np'],
+        color='#1976D2',
+        fill=True,
+        fillColor='#2196F3',
+        fillOpacity=0.7
+    ).add_to(mapa)
+
+# Adicionar veículos
+for veiculo in dados_exemplo['veiculos']:
+    acess = "✓ Sim" if veiculo['a'] else "✗ Não"
+    info = f"""
+    <div style="font-family: Arial;">
+        <h4 style="color: #D32F2F;">🚍 Veículo #{veiculo['p']}</h4>
+        <p><b>Acessível:</b> {acess}</p>
+        <p><b>Atualizado:</b> {veiculo['ta']}</p>
+    </div>
+    """
+    
+    Marker(
+        location=[veiculo['py'], veiculo['px']],
+        popup=folium.Popup(info, max_width=300),
+        tooltip=f"Ônibus {veiculo['p']}",
+        icon=Icon(color='red', icon='bus', prefix='fa')
+    ).add_to(mapa)
+
+# Exibir mapa
+mapa
+```
+
+## Estatísticas da Linha
+
+```{python}
+print("\n📊 ESTATÍSTICAS DA LINHA:")
+print("─" * 50)
+print(f"  Total de Paradas:        {len(dados_exemplo['paradas'])}")
+print(f"  Veículos em Circulação:  {len(dados_exemplo['veiculos'])}")
+print(f"  Veículos Acessíveis:     {sum(v['a'] for v in dados_exemplo['veiculos'])}")
+print(f"  Cobertura:               {len(dados_exemplo['veiculos']) / len(dados_exemplo['paradas']) * 100:.1f}%")
+print("─" * 50)
+```
+
+## An

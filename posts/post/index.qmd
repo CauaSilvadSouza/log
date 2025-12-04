@@ -1,0 +1,302 @@
+---
+title: "Análise de Regressão Linear Simples"
+author: "Caua"
+date: "2024-12-03"
+categories: [machine learning, estatística, python]
+image: "thumbnail.png"
+description: "Implementação completa de regressão linear para análise da relação entre anos de estudo e salário"
+jupyter: python3
+format:
+  html:
+    code-fold: false
+    code-tools: true
+execute:
+  enabled: true
+  echo: true
+  warning: false
+---
+
+## Introdução
+
+Neste post, implementamos um modelo de **regressão linear simples** do zero, utilizando o método dos mínimos quadrados. O objetivo é analisar a relação entre anos de estudo e salário.
+
+## Importar Bibliotecas
+
+```{python}
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+from pathlib import Path
+```
+
+## Conceitos Fundamentais
+
+A regressão linear modela a relação entre uma variável dependente $y$ e uma variável independente $x$ através da equação:
+
+$$
+\hat{y} = \beta_0 + \beta_1 x
+$$
+
+## Classe do Modelo
+
+```{python}
+class ModeloRegressaoLinear:
+    """Classe para análise de regressão linear simples"""
+    
+    def __init__(self):
+        self.dados_x = None
+        self.dados_y = None
+        self.coef_angular = None
+        self.intercepto = None
+        self.r_quadrado = None
+        self.predicoes = None
+    
+    def carregar_dados(self, caminho_x='X.txt', caminho_y='y.txt'):
+        """Carrega os dados dos arquivos de texto"""
+        try:
+            self.dados_x = np.loadtxt(caminho_x)
+            self.dados_y = np.loadtxt(caminho_y)
+            
+            print("📂 Dados carregados com sucesso!")
+            print(f"   Total de observações: {len(self.dados_x)}")
+            print(f"   Variável X: [{self.dados_x.min():.2f}, {self.dados_x.max():.2f}]")
+            print(f"   Variável Y: [{self.dados_y.min():.2f}, {self.dados_y.max():.2f}]")
+            
+            return True
+            
+        except FileNotFoundError:
+            print("❌ Erro: Um ou mais arquivos não foram encontrados!")
+            return False
+        except Exception as erro:
+            print(f"❌ Erro ao carregar dados: {erro}")
+            return False
+    
+    def treinar_modelo(self):
+        """Calcula os coeficientes da regressão linear usando mínimos quadrados"""
+        if self.dados_x is None or self.dados_y is None:
+            print("❌ Carregue os dados primeiro!")
+            return False
+        
+        print("\n🔧 Treinando modelo de regressão linear...")
+        
+        # Construir matriz de design
+        n_observacoes = len(self.dados_x)
+        matriz_design = np.column_stack([np.ones(n_observacoes), self.dados_x])
+        
+        # Método dos mínimos quadrados: β = (X'X)^(-1) X'y
+        xtx = matriz_design.T @ matriz_design
+        xty = matriz_design.T @ self.dados_y
+        coeficientes = np.linalg.solve(xtx, xty)
+        
+        self.intercepto = coeficientes[0]
+        self.coef_angular = coeficientes[1]
+        
+        # Calcular predições
+        self.predicoes = self.intercepto + self.coef_angular * self.dados_x
+        
+        print("✅ Modelo treinado com sucesso!\n")
+        
+        return True
+    
+    def calcular_metricas(self):
+        """Calcula métricas de qualidade do modelo"""
+        if self.predicoes is None:
+            print("❌ Treine o modelo primeiro!")
+            return
+        
+        # R² (Coeficiente de determinação)
+        residuos = self.dados_y - self.predicoes
+        soma_quad_residuos = np.sum(residuos ** 2)
+        soma_quad_total = np.sum((self.dados_y - np.mean(self.dados_y)) ** 2)
+        self.r_quadrado = 1 - (soma_quad_residuos / soma_quad_total)
+        
+        # MSE (Erro Quadrático Médio)
+        mse = soma_quad_residuos / len(self.dados_y)
+        rmse = np.sqrt(mse)
+        
+        print("📊 MÉTRICAS DO MODELO:")
+        print("─" * 50)
+        print(f"   Intercepto (β₀):      {self.intercepto:>10.4f}")
+        print(f"   Coef. Angular (β₁):   {self.coef_angular:>10.4f}")
+        print(f"   R² (R-squared):       {self.r_quadrado:>10.4f}")
+        print(f"   RMSE:                 {rmse:>10.4f}")
+        print("─" * 50)
+        print(f"   Equação: ŷ = {self.intercepto:.4f} + {self.coef_angular:.4f}·x")
+        print()
+        
+        return {
+            'intercepto': self.intercepto,
+            'coef_angular': self.coef_angular,
+            'r_quadrado': self.r_quadrado,
+            'rmse': rmse
+        }
+    
+    def plotar_resultados(self):
+        """Gera visualização interativa dos resultados"""
+        if self.predicoes is None:
+            print("❌ Treine o modelo primeiro!")
+            return None
+        
+        print("📈 Gerando visualização...")
+        
+        # Criar figura
+        grafico = go.Figure()
+        
+        # Adicionar pontos observados
+        grafico.add_trace(go.Scatter(
+            x=self.dados_x,
+            y=self.dados_y,
+            mode='markers',
+            name='Dados Reais',
+            marker=dict(
+                color='#3498db',
+                size=7,
+                opacity=0.7,
+                line=dict(width=1, color='white')
+            ),
+            hovertemplate='<b>X:</b> %{x:.2f}<br><b>Y:</b> %{y:.2f}<extra></extra>'
+        ))
+        
+        # Adicionar linha de regressão
+        indices_ordenados = np.argsort(self.dados_x)
+        x_ordenado = self.dados_x[indices_ordenados]
+        y_pred_ordenado = self.predicoes[indices_ordenados]
+        
+        grafico.add_trace(go.Scatter(
+            x=x_ordenado,
+            y=y_pred_ordenado,
+            mode='lines',
+            name=f'Modelo (R²={self.r_quadrado:.4f})',
+            line=dict(color='#e74c3c', width=3),
+            hovertemplate='<b>Predição:</b> %{y:.2f}<extra></extra>'
+        ))
+        
+        grafico.update_layout(
+            title='Análise de Regressão Linear: Anos de Estudo × Salário',
+            xaxis_title='Anos de Estudo',
+            yaxis_title='Salário (R$)',
+            plot_bgcolor='#f8f9fa',
+            height=600,
+            hovermode='closest'
+        )
+        
+        return grafico
+```
+
+## Executando a Análise
+
+```{python}
+# Criar instância do modelo
+modelo = ModeloRegressaoLinear()
+
+# Carregar dados
+sucesso = modelo.carregar_dados('X.txt', 'y.txt')
+```
+
+```{python}
+# Treinar o modelo
+if sucesso:
+    modelo.treinar_modelo()
+```
+
+```{python}
+# Calcular e exibir métricas
+metricas = modelo.calcular_metricas()
+```
+
+## Visualização dos Resultados
+
+```{python}
+# Gerar gráfico interativo
+grafico = modelo.plotar_resultados()
+grafico.show()
+```
+
+## Análise dos Dados
+
+Vamos examinar os dados mais de perto:
+
+```{python}
+# Criar DataFrame para melhor visualização
+df_analise = pd.DataFrame({
+    'Anos de Estudo': modelo.dados_x[:10],
+    'Salário Real': modelo.dados_y[:10],
+    'Salário Predito': modelo.predicoes[:10],
+    'Resíduo': modelo.dados_y[:10] - modelo.predicoes[:10]
+})
+
+print("\n📋 Primeiras 10 observações:")
+print(df_analise.round(2))
+```
+
+## Estatísticas Descritivas
+
+```{python}
+# Estatísticas dos dados
+print("\n📊 Estatísticas Descritivas:")
+print("\nAnos de Estudo:")
+print(f"  Média: {modelo.dados_x.mean():.2f}")
+print(f"  Mediana: {np.median(modelo.dados_x):.2f}")
+print(f"  Desvio Padrão: {modelo.dados_x.std():.2f}")
+
+print("\nSalário:")
+print(f"  Média: R$ {modelo.dados_y.mean():.2f}")
+print(f"  Mediana: R$ {np.median(modelo.dados_y):.2f}")
+print(f"  Desvio Padrão: R$ {modelo.dados_y.std():.2f}")
+```
+
+## Distribuição dos Resíduos
+
+```{python}
+# Analisar resíduos
+residuos = modelo.dados_y - modelo.predicoes
+
+fig_residuos = go.Figure()
+fig_residuos.add_trace(go.Histogram(
+    x=residuos,
+    nbinsx=30,
+    name='Resíduos',
+    marker_color='#3498db'
+))
+
+fig_residuos.update_layout(
+    title='Distribuição dos Resíduos',
+    xaxis_title='Resíduo',
+    yaxis_title='Frequência',
+    height=400
+)
+
+fig_residuos.show()
+```
+
+## Predições de Exemplo
+
+```{python}
+# Fazer predições para novos valores
+anos_teste = np.array([5, 10, 15, 20])
+salarios_preditos = modelo.intercepto + modelo.coef_angular * anos_teste
+
+print("\n🔮 Predições para novos valores:")
+print("─" * 40)
+for anos, salario in zip(anos_teste, salarios_preditos):
+    print(f"  {anos:2.0f} anos de estudo → R$ {salario:,.2f}")
+print("─" * 40)
+```
+
+## Interpretação dos Resultados
+
+```{python}
+print("\n💡 INTERPRETAÇÃO:")
+print(f"• Cada ano adicional de estudo está associado a um aumento")
+print(f"  médio de R$ {modelo.coef_angular:.2f} no salário")
+print(f"• O modelo explica {modelo.r_quadrado*100:.2f}% da variação nos salários")
+print(f"• O intercepto de R$ {modelo.intercepto:.2f} representa o salário base")
+```
+
+## Conclusão
+
+Esta implementação demonstra os fundamentos da regressão linear, desde a teoria matemática até a aplicação prática. O modelo fornece insights valiosos sobre a relação entre educação e renda.
+
+---
+
+**Tags:** #MachineLearning #Python #Regressão #DataScience
