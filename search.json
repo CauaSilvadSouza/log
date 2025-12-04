@@ -1,0 +1,289 @@
+[
+  {
+    "objectID": "posts/welcome/index.html",
+    "href": "posts/welcome/index.html",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "",
+    "text": "Neste projeto, desenvolvemos um sistema para consultar e visualizar cotações históricas do dólar PTAX utilizando a API pública do Banco Central do Brasil. O PTAX é a taxa de câmbio oficial usada como referência para operações no mercado brasileiro."
+  },
+  {
+    "objectID": "posts/welcome/index.html#introdução",
+    "href": "posts/welcome/index.html#introdução",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "",
+    "text": "Neste projeto, desenvolvemos um sistema para consultar e visualizar cotações históricas do dólar PTAX utilizando a API pública do Banco Central do Brasil. O PTAX é a taxa de câmbio oficial usada como referência para operações no mercado brasileiro."
+  },
+  {
+    "objectID": "posts/welcome/index.html#o-que-é-ptax",
+    "href": "posts/welcome/index.html#o-que-é-ptax",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "O que é PTAX?",
+    "text": "O que é PTAX?\nA PTAX (Preço de Taxa de Câmbio) é calculada pelo Banco Central do Brasil com base nas operações de compra e venda de dólares realizadas durante o dia. É amplamente utilizada para:\n\nContratos de câmbio\nOperações de importação/exportação\nReferência para investimentos\nCálculos contábeis"
+  },
+  {
+    "objectID": "posts/welcome/index.html#arquitetura-da-solução",
+    "href": "posts/welcome/index.html#arquitetura-da-solução",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Arquitetura da Solução",
+    "text": "Arquitetura da Solução\nO sistema é composto por:\n\nCliente API: Conexão com o serviço OData do BCB\nProcessamento: Tratamento e preenchimento de dados\nVisualização: Gráficos interativos com Plotly"
+  },
+  {
+    "objectID": "posts/welcome/index.html#implementação",
+    "href": "posts/welcome/index.html#implementação",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Implementação",
+    "text": "Implementação\n\nClasse Principal\n\nimport requests\nimport pandas as pd\nimport plotly.graph_objects as go\nfrom datetime import datetime\nimport calendar\n\n\nclass ConsultadorDolarPTAX:\n    \"\"\"Classe para consultar e visualizar cotações do dólar\"\"\"\n    \n    def __init__(self, periodo: str):\n        self.periodo = periodo\n        self.url_api = \"https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/\"\n        self.dados_processados = None\n        \n    def _converter_periodo(self):\n        \"\"\"Converte string MMYYYY para objeto datetime\"\"\"\n        try:\n            return datetime.strptime(self.periodo, \"%m%Y\")\n        except ValueError:\n            raise ValueError(\"Período deve estar no formato MMYYYY\")\n\n\n\nMontagem da URL de Consulta\nO método constrói a URL com base no período solicitado:\n\n    def _montar_url_consulta(self, dt_objeto):\n        \"\"\"Monta URL de consulta da API\"\"\"\n        primeiro_dia = 1\n        ultimo_dia = calendar.monthrange(dt_objeto.year, dt_objeto.month)[1]\n        \n        dt_inicio = f\"{dt_objeto.month:02d}-{primeiro_dia:02d}-{dt_objeto.year}\"\n        dt_fim = f\"{dt_objeto.month:02d}-{ultimo_dia:02d}-{dt_objeto.year}\"\n        \n        endpoint = (\n            f\"{self.url_api}CotacaoDolarPeriodo(dataInicial=@dataInicial,\"\n            f\"dataFinalCotacao=@dataFinalCotacao)?\"\n            f\"@dataInicial='{dt_inicio}'&@dataFinalCotacao='{dt_fim}'&$format=json\"\n        )\n        \n        return endpoint, primeiro_dia, ultimo_dia\n\n\n\nBusca de Cotações\n\n    def buscar_cotacoes(self):\n        \"\"\"Realiza a busca das cotações na API do BCB\"\"\"\n        print(f\"🔍 Buscando cotações para {self.periodo}...\")\n        \n        dt_referencia = self._converter_periodo()\n        url_requisicao, dia_ini, dia_fim = self._montar_url_consulta(dt_referencia)\n        \n        try:\n            resposta = requests.get(url_requisicao, timeout=10)\n            resposta.raise_for_status()\n            dados_json = resposta.json()\n            \n            if not dados_json.get('value'):\n                print(f\"⚠️  Nenhuma cotação encontrada para {self.periodo}\")\n                return None\n            \n            # Processar dados da API\n            dataframe = pd.DataFrame(dados_json['value'])\n            dataframe['dataHoraCotacao'] = pd.to_datetime(dataframe['dataHoraCotacao'])\n            dataframe['dia'] = dataframe['dataHoraCotacao'].dt.date\n            dataframe = dataframe[['dia', 'cotacaoVenda']].sort_values('dia')\n            \n            print(f\"✅ {len(dataframe)} registros obtidos\")\n            \n            # Preencher todos os dias do mês\n            dataframe_completo = self._preencher_dias_faltantes(\n                dataframe, dt_referencia, dia_ini, dia_fim\n            )\n            \n            self.dados_processados = dataframe_completo\n            return dataframe_completo\n            \n        except requests.exceptions.Timeout:\n            print(\"❌ Tempo esgotado ao conectar com a API\")\n            return None\n        except requests.exceptions.RequestException as erro:\n            print(f\"❌ Erro na requisição: {erro}\")\n            return None\n\n\n\nPreenchimento de Dados Faltantes\nComo não há cotação em finais de semana e feriados, o método preenche esses dias com o último valor disponível:\n\n    def _preencher_dias_faltantes(self, df_original, dt_ref, dia_inicial, dia_final):\n        \"\"\"Preenche dias sem cotação com o último valor disponível\"\"\"\n        data_inicio = datetime(dt_ref.year, dt_ref.month, dia_inicial).date()\n        data_fim = datetime(dt_ref.year, dt_ref.month, dia_final).date()\n        \n        # Criar range com todos os dias\n        todos_dias = pd.date_range(start=data_inicio, end=data_fim, freq='D').date\n        df_todos_dias = pd.DataFrame({'dia': todos_dias})\n        \n        # Fazer merge e preencher valores faltantes\n        df_final = df_todos_dias.merge(df_original, on='dia', how='left')\n        df_final['cotacaoVenda'].fillna(method='ffill', inplace=True)\n        df_final.rename(columns={'cotacaoVenda': 'valor_cotacao'}, inplace=True)\n        \n        dias_preenchidos = df_final['valor_cotacao'].notna().sum() - len(df_original)\n        if dias_preenchidos &gt; 0:\n            print(f\"📝 {dias_preenchidos} dias foram preenchidos com valores anteriores\")\n        \n        return df_final\n\n\n\nGeração de Gráficos\n\n    def gerar_grafico(self):\n        \"\"\"Gera gráfico interativo das cotações\"\"\"\n        if self.dados_processados is None:\n            print(\"❌ Não há dados para gerar o gráfico\")\n            return None\n        \n        df = self.dados_processados\n        dt_ref = self._converter_periodo()\n        nome_mes = dt_ref.strftime(\"%B\").upper()\n        \n        # Criar gráfico com plotly graph_objects\n        figura = go.Figure()\n        \n        figura.add_trace(go.Scatter(\n            x=df['dia'],\n            y=df['valor_cotacao'],\n            mode='lines+markers',\n            name='Cotação',\n            line=dict(color='#00a86b', width=2.5),\n            marker=dict(size=5, color='#006b4e'),\n            hovertemplate='&lt;b&gt;Data:&lt;/b&gt; %{x}&lt;br&gt;&lt;b&gt;Cotação:&lt;/b&gt; R$ %{y:.4f}&lt;extra&gt;&lt;/extra&gt;'\n        ))\n        \n        figura.update_layout(\n            title=f'COTAÇÃO PTAX DO DÓLAR - {nome_mes}/{dt_ref.year}',\n            xaxis_title='Período',\n            yaxis_title='Valor em Reais (R$)',\n            plot_bgcolor='white',\n            hovermode='x unified',\n            height=550\n        )\n        \n        # Salvar gráfico\n        nome_arquivo = f\"grafico_dolar_ptax_{self.periodo}.html\"\n        figura.write_html(nome_arquivo, include_plotlyjs='cdn')\n        \n        print(f\"\\n✅ Gráfico salvo: {nome_arquivo}\")\n        \n        return nome_arquivo"
+  },
+  {
+    "objectID": "posts/welcome/index.html#uso-do-sistema",
+    "href": "posts/welcome/index.html#uso-do-sistema",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Uso do Sistema",
+    "text": "Uso do Sistema\n\ndef executar_consulta(mes_ano: str):\n    \"\"\"Função principal para executar a consulta\"\"\"\n    try:\n        if len(mes_ano) != 6 or not mes_ano.isdigit():\n            print(\"\\n❌ Formato incorreto! Utilize MMYYYY (exemplo: 072016)\")\n            return\n        \n        print(\"\\n\" + \"=\"*75)\n        print(\"SISTEMA DE CONSULTA - COTAÇÃO DÓLAR PTAX (BCB)\")\n        print(\"=\"*75 + \"\\n\")\n        \n        consultor = ConsultadorDolarPTAX(mes_ano)\n        \n        # Buscar cotações\n        dados = consultor.buscar_cotacoes()\n        \n        if dados is not None:\n            # Gerar gráfico\n            consultor.gerar_grafico()\n            \n            # Exibir estatísticas\n            print(\"\\n📊 ESTATÍSTICAS DO PERÍODO:\")\n            print(f\"   • Valor mínimo: R$ {dados['valor_cotacao'].min():.4f}\")\n            print(f\"   • Valor máximo: R$ {dados['valor_cotacao'].max():.4f}\")\n            print(f\"   • Valor médio: R$ {dados['valor_cotacao'].mean():.4f}\")\n        \n        print(\"\\n\" + \"=\"*75)\n        \n    except Exception as erro:\n        print(f\"\\n❌ Erro durante execução: {erro}\")\n\n\nif __name__ == \"__main__\":\n    periodo_consulta = \"022019\"  # Fevereiro de 2019\n    executar_consulta(periodo_consulta)"
+  },
+  {
+    "objectID": "posts/welcome/index.html#exemplo-de-saída",
+    "href": "posts/welcome/index.html#exemplo-de-saída",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Exemplo de Saída",
+    "text": "Exemplo de Saída\n=========================================================================\nSISTEMA DE CONSULTA - COTAÇÃO DÓLAR PTAX (BCB)\n=========================================================================\n\n🔍 Buscando cotações para 022019...\n✅ 19 registros obtidos\n📝 9 dias foram preenchidos com valores anteriores\n\n📈 Gerando visualização...\n\n✅ Gráfico salvo: grafico_dolar_ptax_022019.html\n💡 Abra o arquivo para visualização interativa\n\n📊 ESTATÍSTICAS DO PERÍODO:\n   • Valor mínimo: R$ 3.6900\n   • Valor máximo: R$ 3.7450\n   • Valor médio: R$ 3.7124\n\n========================================================================="
+  },
+  {
+    "objectID": "posts/welcome/index.html#recursos-da-visualização",
+    "href": "posts/welcome/index.html#recursos-da-visualização",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Recursos da Visualização",
+    "text": "Recursos da Visualização\nO gráfico interativo oferece:\n\nHover tooltips: Detalhes ao passar o mouse\nZoom: Ampliar períodos específicos\nPan: Navegar pela timeline\nDownload: Exportar como PNG\nResponsivo: Adaptável a diferentes telas"
+  },
+  {
+    "objectID": "posts/welcome/index.html#casos-de-uso",
+    "href": "posts/welcome/index.html#casos-de-uso",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Casos de Uso",
+    "text": "Casos de Uso\nEste sistema pode ser utilizado para:\n\nAnálise financeira: Estudar tendências cambiais\nRelatórios: Gerar visualizações para apresentações\nPesquisa: Coletar dados históricos para estudos\nAutomação: Integrar em pipelines de dados"
+  },
+  {
+    "objectID": "posts/welcome/index.html#melhorias-futuras",
+    "href": "posts/welcome/index.html#melhorias-futuras",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Melhorias Futuras",
+    "text": "Melhorias Futuras\nPossíveis extensões:\n\nAnálise de múltiplos períodos\nComparação com outras moedas\nCálculo de volatilidade\nPrevisões usando machine learning\nDashboard web interativo"
+  },
+  {
+    "objectID": "posts/welcome/index.html#conclusão",
+    "href": "posts/welcome/index.html#conclusão",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Conclusão",
+    "text": "Conclusão\nEste projeto demonstra como consumir APIs públicas brasileiras para análise de dados financeiros, combinando processamento de dados com visualizações profissionais."
+  },
+  {
+    "objectID": "posts/welcome/index.html#referências",
+    "href": "posts/welcome/index.html#referências",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Referências",
+    "text": "Referências\n\nAPI PTAX - Banco Central\nPandas Documentation\nPlotly Python\n\n\nTags: #API #Finanças #Python #DataViz #BancoCentral"
+  },
+  {
+    "objectID": "posts/post/index.html",
+    "href": "posts/post/index.html",
+    "title": "Análise de Regressão Linear Simples",
+    "section": "",
+    "text": "Neste post, implementamos um modelo de regressão linear simples do zero, utilizando o método dos mínimos quadrados. O objetivo é analisar a relação entre anos de estudo e salário."
+  },
+  {
+    "objectID": "posts/post/index.html#introdução",
+    "href": "posts/post/index.html#introdução",
+    "title": "Análise de Regressão Linear Simples",
+    "section": "",
+    "text": "Neste post, implementamos um modelo de regressão linear simples do zero, utilizando o método dos mínimos quadrados. O objetivo é analisar a relação entre anos de estudo e salário."
+  },
+  {
+    "objectID": "posts/post/index.html#importar-bibliotecas",
+    "href": "posts/post/index.html#importar-bibliotecas",
+    "title": "Análise de Regressão Linear Simples",
+    "section": "Importar Bibliotecas",
+    "text": "Importar Bibliotecas\n\nimport numpy as np\nimport pandas as pd\nimport plotly.graph_objects as go\nfrom pathlib import Path"
+  },
+  {
+    "objectID": "posts/post/index.html#conceitos-fundamentais",
+    "href": "posts/post/index.html#conceitos-fundamentais",
+    "title": "Análise de Regressão Linear Simples",
+    "section": "Conceitos Fundamentais",
+    "text": "Conceitos Fundamentais\nA regressão linear modela a relação entre uma variável dependente \\(y\\) e uma variável independente \\(x\\) através da equação:\n\\[\n\\hat{y} = \\beta_0 + \\beta_1 x\n\\]"
+  },
+  {
+    "objectID": "posts/post/index.html#classe-do-modelo",
+    "href": "posts/post/index.html#classe-do-modelo",
+    "title": "Análise de Regressão Linear Simples",
+    "section": "Classe do Modelo",
+    "text": "Classe do Modelo\n\nclass ModeloRegressaoLinear:\n    \"\"\"Classe para análise de regressão linear simples\"\"\"\n    \n    def __init__(self):\n        self.dados_x = None\n        self.dados_y = None\n        self.coef_angular = None\n        self.intercepto = None\n        self.r_quadrado = None\n        self.predicoes = None\n    \n    def carregar_dados(self, caminho_x='X.txt', caminho_y='y.txt'):\n        \"\"\"Carrega os dados dos arquivos de texto\"\"\"\n        try:\n            self.dados_x = np.loadtxt(caminho_x)\n            self.dados_y = np.loadtxt(caminho_y)\n            \n            print(\"📂 Dados carregados com sucesso!\")\n            print(f\"   Total de observações: {len(self.dados_x)}\")\n            print(f\"   Variável X: [{self.dados_x.min():.2f}, {self.dados_x.max():.2f}]\")\n            print(f\"   Variável Y: [{self.dados_y.min():.2f}, {self.dados_y.max():.2f}]\")\n            \n            return True\n            \n        except FileNotFoundError:\n            print(\"❌ Erro: Um ou mais arquivos não foram encontrados!\")\n            return False\n        except Exception as erro:\n            print(f\"❌ Erro ao carregar dados: {erro}\")\n            return False\n    \n    def treinar_modelo(self):\n        \"\"\"Calcula os coeficientes da regressão linear usando mínimos quadrados\"\"\"\n        if self.dados_x is None or self.dados_y is None:\n            print(\"❌ Carregue os dados primeiro!\")\n            return False\n        \n        print(\"\\n🔧 Treinando modelo de regressão linear...\")\n        \n        # Construir matriz de design\n        n_observacoes = len(self.dados_x)\n        matriz_design = np.column_stack([np.ones(n_observacoes), self.dados_x])\n        \n        # Método dos mínimos quadrados: β = (X'X)^(-1) X'y\n        xtx = matriz_design.T @ matriz_design\n        xty = matriz_design.T @ self.dados_y\n        coeficientes = np.linalg.solve(xtx, xty)\n        \n        self.intercepto = coeficientes[0]\n        self.coef_angular = coeficientes[1]\n        \n        # Calcular predições\n        self.predicoes = self.intercepto + self.coef_angular * self.dados_x\n        \n        print(\"✅ Modelo treinado com sucesso!\\n\")\n        \n        return True\n    \n    def calcular_metricas(self):\n        \"\"\"Calcula métricas de qualidade do modelo\"\"\"\n        if self.predicoes is None:\n            print(\"❌ Treine o modelo primeiro!\")\n            return\n        \n        # R² (Coeficiente de determinação)\n        residuos = self.dados_y - self.predicoes\n        soma_quad_residuos = np.sum(residuos ** 2)\n        soma_quad_total = np.sum((self.dados_y - np.mean(self.dados_y)) ** 2)\n        self.r_quadrado = 1 - (soma_quad_residuos / soma_quad_total)\n        \n        # MSE (Erro Quadrático Médio)\n        mse = soma_quad_residuos / len(self.dados_y)\n        rmse = np.sqrt(mse)\n        \n        print(\"📊 MÉTRICAS DO MODELO:\")\n        print(\"─\" * 50)\n        print(f\"   Intercepto (β₀):      {self.intercepto:&gt;10.4f}\")\n        print(f\"   Coef. Angular (β₁):   {self.coef_angular:&gt;10.4f}\")\n        print(f\"   R² (R-squared):       {self.r_quadrado:&gt;10.4f}\")\n        print(f\"   RMSE:                 {rmse:&gt;10.4f}\")\n        print(\"─\" * 50)\n        print(f\"   Equação: ŷ = {self.intercepto:.4f} + {self.coef_angular:.4f}·x\")\n        print()\n        \n        return {\n            'intercepto': self.intercepto,\n            'coef_angular': self.coef_angular,\n            'r_quadrado': self.r_quadrado,\n            'rmse': rmse\n        }\n    \n    def plotar_resultados(self):\n        \"\"\"Gera visualização interativa dos resultados\"\"\"\n        if self.predicoes is None:\n            print(\"❌ Treine o modelo primeiro!\")\n            return None\n        \n        print(\"📈 Gerando visualização...\")\n        \n        # Criar figura\n        grafico = go.Figure()\n        \n        # Adicionar pontos observados\n        grafico.add_trace(go.Scatter(\n            x=self.dados_x,\n            y=self.dados_y,\n            mode='markers',\n            name='Dados Reais',\n            marker=dict(\n                color='#3498db',\n                size=7,\n                opacity=0.7,\n                line=dict(width=1, color='white')\n            ),\n            hovertemplate='&lt;b&gt;X:&lt;/b&gt; %{x:.2f}&lt;br&gt;&lt;b&gt;Y:&lt;/b&gt; %{y:.2f}&lt;extra&gt;&lt;/extra&gt;'\n        ))\n        \n        # Adicionar linha de regressão\n        indices_ordenados = np.argsort(self.dados_x)\n        x_ordenado = self.dados_x[indices_ordenados]\n        y_pred_ordenado = self.predicoes[indices_ordenados]\n        \n        grafico.add_trace(go.Scatter(\n            x=x_ordenado,\n            y=y_pred_ordenado,\n            mode='lines',\n            name=f'Modelo (R²={self.r_quadrado:.4f})',\n            line=dict(color='#e74c3c', width=3),\n            hovertemplate='&lt;b&gt;Predição:&lt;/b&gt; %{y:.2f}&lt;extra&gt;&lt;/extra&gt;'\n        ))\n        \n        grafico.update_layout(\n            title='Análise de Regressão Linear: Anos de Estudo × Salário',\n            xaxis_title='Anos de Estudo',\n            yaxis_title='Salário (R$)',\n            plot_bgcolor='#f8f9fa',\n            height=600,\n            hovermode='closest'\n        )\n        \n        return grafico"
+  },
+  {
+    "objectID": "posts/post/index.html#executando-a-análise",
+    "href": "posts/post/index.html#executando-a-análise",
+    "title": "Análise de Regressão Linear Simples",
+    "section": "Executando a Análise",
+    "text": "Executando a Análise\n\n# Criar instância do modelo\nmodelo = ModeloRegressaoLinear()\n\n# Carregar dados\nsucesso = modelo.carregar_dados('X.txt', 'y.txt')\n\n📂 Dados carregados com sucesso!\n   Total de observações: 700\n   Variável X: [1.00, 15.94]\n   Variável Y: [-785.21, 17809.60]\n\n\n\n# Treinar o modelo\nif sucesso:\n    modelo.treinar_modelo()\n\n\n🔧 Treinando modelo de regressão linear...\n✅ Modelo treinado com sucesso!\n\n\n\n\n# Calcular e exibir métricas\nmetricas = modelo.calcular_metricas()\n\n📊 MÉTRICAS DO MODELO:\n──────────────────────────────────────────────────\n   Intercepto (β₀):        373.9345\n   Coef. Angular (β₁):     991.6278\n   R² (R-squared):           0.9427\n   RMSE:                  1004.0261\n──────────────────────────────────────────────────\n   Equação: ŷ = 373.9345 + 991.6278·x"
+  },
+  {
+    "objectID": "posts/post/index.html#visualização-dos-resultados",
+    "href": "posts/post/index.html#visualização-dos-resultados",
+    "title": "Análise de Regressão Linear Simples",
+    "section": "Visualização dos Resultados",
+    "text": "Visualização dos Resultados\n\n# Gerar gráfico interativo\ngrafico = modelo.plotar_resultados()\ngrafico.show()\n\n📈 Gerando visualização..."
+  },
+  {
+    "objectID": "posts/post/index.html#análise-dos-dados",
+    "href": "posts/post/index.html#análise-dos-dados",
+    "title": "Análise de Regressão Linear Simples",
+    "section": "Análise dos Dados",
+    "text": "Análise dos Dados\nVamos examinar os dados mais de perto:\n\n# Criar DataFrame para melhor visualização\ndf_analise = pd.DataFrame({\n    'Anos de Estudo': modelo.dados_x[:10],\n    'Salário Real': modelo.dados_y[:10],\n    'Salário Predito': modelo.predicoes[:10],\n    'Resíduo': modelo.dados_y[:10] - modelo.predicoes[:10]\n})\n\nprint(\"\\n📋 Primeiras 10 observações:\")\nprint(df_analise.round(2))\n\n\n📋 Primeiras 10 observações:\n   Anos de Estudo  Salário Real  Salário Predito  Resíduo\n0            1.00       1143.98          1365.68  -221.70\n1            1.02       2419.26          1384.39  1034.87\n2            1.02       1447.13          1389.05    58.08\n3            1.02        334.16          1389.11 -1054.95\n4            1.02       1214.72          1389.13  -174.41\n5            1.02       1446.20          1389.13    57.07\n6            1.03       1738.19          1396.59   341.59\n7            1.08       1436.11          1445.72    -9.61\n8            1.08       -299.02          1445.73 -1744.75\n9            1.08       1876.73          1448.13   428.61"
+  },
+  {
+    "objectID": "posts/post/index.html#estatísticas-descritivas",
+    "href": "posts/post/index.html#estatísticas-descritivas",
+    "title": "Análise de Regressão Linear Simples",
+    "section": "Estatísticas Descritivas",
+    "text": "Estatísticas Descritivas\n\n# Estatísticas dos dados\nprint(\"\\n📊 Estatísticas Descritivas:\")\nprint(\"\\nAnos de Estudo:\")\nprint(f\"  Média: {modelo.dados_x.mean():.2f}\")\nprint(f\"  Mediana: {np.median(modelo.dados_x):.2f}\")\nprint(f\"  Desvio Padrão: {modelo.dados_x.std():.2f}\")\n\nprint(\"\\nSalário:\")\nprint(f\"  Média: R$ {modelo.dados_y.mean():.2f}\")\nprint(f\"  Mediana: R$ {np.median(modelo.dados_y):.2f}\")\nprint(f\"  Desvio Padrão: R$ {modelo.dados_y.std():.2f}\")\n\n\n📊 Estatísticas Descritivas:\n\nAnos de Estudo:\n  Média: 8.34\n  Mediana: 8.56\n  Desvio Padrão: 4.11\n\nSalário:\n  Média: R$ 8647.13\n  Mediana: R$ 8661.07\n  Desvio Padrão: R$ 4194.19"
+  },
+  {
+    "objectID": "posts/post/index.html#distribuição-dos-resíduos",
+    "href": "posts/post/index.html#distribuição-dos-resíduos",
+    "title": "Análise de Regressão Linear Simples",
+    "section": "Distribuição dos Resíduos",
+    "text": "Distribuição dos Resíduos\n\n# Analisar resíduos\nresiduos = modelo.dados_y - modelo.predicoes\n\nfig_residuos = go.Figure()\nfig_residuos.add_trace(go.Histogram(\n    x=residuos,\n    nbinsx=30,\n    name='Resíduos',\n    marker_color='#3498db'\n))\n\nfig_residuos.update_layout(\n    title='Distribuição dos Resíduos',\n    xaxis_title='Resíduo',\n    yaxis_title='Frequência',\n    height=400\n)\n\nfig_residuos.show()"
+  },
+  {
+    "objectID": "posts/post/index.html#predições-de-exemplo",
+    "href": "posts/post/index.html#predições-de-exemplo",
+    "title": "Análise de Regressão Linear Simples",
+    "section": "Predições de Exemplo",
+    "text": "Predições de Exemplo\n\n# Fazer predições para novos valores\nanos_teste = np.array([5, 10, 15, 20])\nsalarios_preditos = modelo.intercepto + modelo.coef_angular * anos_teste\n\nprint(\"\\n🔮 Predições para novos valores:\")\nprint(\"─\" * 40)\nfor anos, salario in zip(anos_teste, salarios_preditos):\n    print(f\"  {anos:2.0f} anos de estudo → R$ {salario:,.2f}\")\nprint(\"─\" * 40)\n\n\n🔮 Predições para novos valores:\n────────────────────────────────────────\n   5 anos de estudo → R$ 5,332.07\n  10 anos de estudo → R$ 10,290.21\n  15 anos de estudo → R$ 15,248.35\n  20 anos de estudo → R$ 20,206.49\n────────────────────────────────────────"
+  },
+  {
+    "objectID": "posts/post/index.html#interpretação-dos-resultados",
+    "href": "posts/post/index.html#interpretação-dos-resultados",
+    "title": "Análise de Regressão Linear Simples",
+    "section": "Interpretação dos Resultados",
+    "text": "Interpretação dos Resultados\n\nprint(\"\\n💡 INTERPRETAÇÃO:\")\nprint(f\"• Cada ano adicional de estudo está associado a um aumento\")\nprint(f\"  médio de R$ {modelo.coef_angular:.2f} no salário\")\nprint(f\"• O modelo explica {modelo.r_quadrado*100:.2f}% da variação nos salários\")\nprint(f\"• O intercepto de R$ {modelo.intercepto:.2f} representa o salário base\")\n\n\n💡 INTERPRETAÇÃO:\n• Cada ano adicional de estudo está associado a um aumento\n  médio de R$ 991.63 no salário\n• O modelo explica 94.27% da variação nos salários\n• O intercepto de R$ 373.93 representa o salário base"
+  },
+  {
+    "objectID": "posts/post/index.html#conclusão",
+    "href": "posts/post/index.html#conclusão",
+    "title": "Análise de Regressão Linear Simples",
+    "section": "Conclusão",
+    "text": "Conclusão\nEsta implementação demonstra os fundamentos da regressão linear, desde a teoria matemática até a aplicação prática. O modelo fornece insights valiosos sobre a relação entre educação e renda.\n\nTags: #MachineLearning #Python #Regressão #DataScience"
+  },
+  {
+    "objectID": "about.html",
+    "href": "about.html",
+    "title": "About",
+    "section": "",
+    "text": "About this blog"
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "caua",
+    "section": "",
+    "text": "Análise de Regressão Linear Simples\n\n\n\nmachine learning\n\nestatística\n\npython\n\n\n\nImplementação completa de regressão linear para análise da relação entre anos de estudo e salário\n\n\n\n\n\nDec 3, 2024\n\n\nCaua\n\n\n\n\n\n\n\n\n\n\n\n\nAnálise de Cotações do Dólar PTAX\n\n\n\napi\n\nfinanças\n\nvisualização\n\npython\n\n\n\nSistema de consulta e visualização de cotações históricas do dólar usando a API do Banco Central do Brasil\n\n\n\n\n\nDec 3, 2024\n\n\nCaua\n\n\n\n\n\n\n\n\n\n\n\n\nSistema de Rastreamento de Ônibus em Tempo Real\n\n\n\napi\n\nmapas\n\ntransporte\n\npython\n\n\n\nRastreamento em tempo real de ônibus de São Paulo usando a API SPTrans OlhoVivo com visualização em mapas interativos\n\n\n\n\n\nDec 3, 2024\n\n\nCaua\n\n\n\n\n\nNo matching items"
+  },
+  {
+    "objectID": "posts/post-with-code/index.html",
+    "href": "posts/post-with-code/index.html",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "",
+    "text": "Neste projeto, desenvolvemos um sistema para consultar e visualizar cotações históricas do dólar PTAX utilizando a API pública do Banco Central do Brasil."
+  },
+  {
+    "objectID": "posts/post-with-code/index.html#introdução",
+    "href": "posts/post-with-code/index.html#introdução",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "",
+    "text": "Neste projeto, desenvolvemos um sistema para consultar e visualizar cotações históricas do dólar PTAX utilizando a API pública do Banco Central do Brasil."
+  },
+  {
+    "objectID": "posts/post-with-code/index.html#importar-bibliotecas",
+    "href": "posts/post-with-code/index.html#importar-bibliotecas",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Importar Bibliotecas",
+    "text": "Importar Bibliotecas\n\nimport requests\nimport pandas as pd\nimport plotly.graph_objects as go\nfrom datetime import datetime\nimport calendar"
+  },
+  {
+    "objectID": "posts/post-with-code/index.html#classe-principal",
+    "href": "posts/post-with-code/index.html#classe-principal",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Classe Principal",
+    "text": "Classe Principal\n\nclass ConsultadorDolarPTAX:\n    \"\"\"Classe para consultar e visualizar cotações do dólar\"\"\"\n    \n    def __init__(self, periodo: str):\n        self.periodo = periodo\n        self.url_api = \"https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/\"\n        self.dados_processados = None\n        \n    def _converter_periodo(self):\n        \"\"\"Converte string MMYYYY para objeto datetime\"\"\"\n        try:\n            return datetime.strptime(self.periodo, \"%m%Y\")\n        except ValueError:\n            raise ValueError(\"Período deve estar no formato MMYYYY\")\n    \n    def _montar_url_consulta(self, dt_objeto):\n        \"\"\"Monta URL de consulta da API\"\"\"\n        primeiro_dia = 1\n        ultimo_dia = calendar.monthrange(dt_objeto.year, dt_objeto.month)[1]\n        \n        dt_inicio = f\"{dt_objeto.month:02d}-{primeiro_dia:02d}-{dt_objeto.year}\"\n        dt_fim = f\"{dt_objeto.month:02d}-{ultimo_dia:02d}-{dt_objeto.year}\"\n        \n        endpoint = (\n            f\"{self.url_api}CotacaoDolarPeriodo(dataInicial=@dataInicial,\"\n            f\"dataFinalCotacao=@dataFinalCotacao)?\"\n            f\"@dataInicial='{dt_inicio}'&@dataFinalCotacao='{dt_fim}'&$format=json\"\n        )\n        \n        return endpoint, primeiro_dia, ultimo_dia\n    \n    def buscar_cotacoes(self):\n        \"\"\"Realiza a busca das cotações na API do BCB\"\"\"\n        print(f\"🔍 Buscando cotações para {self.periodo}...\")\n        \n        dt_referencia = self._converter_periodo()\n        url_requisicao, dia_ini, dia_fim = self._montar_url_consulta(dt_referencia)\n        \n        try:\n            resposta = requests.get(url_requisicao, timeout=10)\n            resposta.raise_for_status()\n            dados_json = resposta.json()\n            \n            if not dados_json.get('value'):\n                print(f\"⚠️  Nenhuma cotação encontrada para {self.periodo}\")\n                return None\n            \n            # Processar dados da API\n            dataframe = pd.DataFrame(dados_json['value'])\n            dataframe['dataHoraCotacao'] = pd.to_datetime(dataframe['dataHoraCotacao'])\n            dataframe['dia'] = dataframe['dataHoraCotacao'].dt.date\n            dataframe = dataframe[['dia', 'cotacaoVenda']].sort_values('dia')\n            \n            print(f\"✅ {len(dataframe)} registros obtidos\")\n            \n            # Preencher todos os dias do mês\n            dataframe_completo = self._preencher_dias_faltantes(\n                dataframe, dt_referencia, dia_ini, dia_fim\n            )\n            \n            self.dados_processados = dataframe_completo\n            return dataframe_completo\n            \n        except requests.exceptions.Timeout:\n            print(\"❌ Tempo esgotado ao conectar com a API\")\n            return None\n        except requests.exceptions.RequestException as erro:\n            print(f\"❌ Erro na requisição: {erro}\")\n            return None\n    \n    def _preencher_dias_faltantes(self, df_original, dt_ref, dia_inicial, dia_final):\n        \"\"\"Preenche dias sem cotação com o último valor disponível\"\"\"\n        data_inicio = datetime(dt_ref.year, dt_ref.month, dia_inicial).date()\n        data_fim = datetime(dt_ref.year, dt_ref.month, dia_final).date()\n        \n        # Criar range com todos os dias\n        todos_dias = pd.date_range(start=data_inicio, end=data_fim, freq='D').date\n        df_todos_dias = pd.DataFrame({'dia': todos_dias})\n        \n        # Fazer merge e preencher valores faltantes\n        df_final = df_todos_dias.merge(df_original, on='dia', how='left')\n        df_final['cotacaoVenda'] = df_final['cotacaoVenda'].fillna(method='ffill')\n        df_final.rename(columns={'cotacaoVenda': 'valor_cotacao'}, inplace=True)\n        \n        dias_preenchidos = df_final['valor_cotacao'].notna().sum() - len(df_original)\n        if dias_preenchidos &gt; 0:\n            print(f\"📝 {dias_preenchidos} dias foram preenchidos com valores anteriores\")\n        \n        return df_final\n    \n    def gerar_grafico(self):\n        \"\"\"Gera gráfico interativo das cotações\"\"\"\n        if self.dados_processados is None:\n            print(\"❌ Não há dados para gerar o gráfico\")\n            return None\n        \n        df = self.dados_processados\n        dt_ref = self._converter_periodo()\n        nome_mes = dt_ref.strftime(\"%B\").upper()\n        \n        # Criar gráfico com plotly graph_objects\n        figura = go.Figure()\n        \n        figura.add_trace(go.Scatter(\n            x=df['dia'],\n            y=df['valor_cotacao'],\n            mode='lines+markers',\n            name='Cotação',\n            line=dict(color='#00a86b', width=2.5),\n            marker=dict(size=5, color='#006b4e'),\n            hovertemplate='&lt;b&gt;Data:&lt;/b&gt; %{x}&lt;br&gt;&lt;b&gt;Cotação:&lt;/b&gt; R$ %{y:.4f}&lt;extra&gt;&lt;/extra&gt;'\n        ))\n        \n        figura.update_layout(\n            title=f'COTAÇÃO PTAX DO DÓLAR - {nome_mes}/{dt_ref.year}',\n            xaxis_title='Período',\n            yaxis_title='Valor em Reais (R$)',\n            plot_bgcolor='white',\n            hovermode='x unified',\n            height=550\n        )\n        \n        return figura\n    \n    def exibir_estatisticas(self):\n        \"\"\"Exibe estatísticas do período\"\"\"\n        if self.dados_processados is None:\n            return\n        \n        df = self.dados_processados\n        \n        print(\"\\n📊 ESTATÍSTICAS DO PERÍODO:\")\n        print(\"─\" * 50)\n        print(f\"   Valor mínimo:    R$ {df['valor_cotacao'].min():.4f}\")\n        print(f\"   Valor máximo:    R$ {df['valor_cotacao'].max():.4f}\")\n        print(f\"   Valor médio:     R$ {df['valor_cotacao'].mean():.4f}\")\n        print(f\"   Desvio padrão:   R$ {df['valor_cotacao'].std():.4f}\")\n        print(f\"   Variação total:  R$ {df['valor_cotacao'].max() - df['valor_cotacao'].min():.4f}\")\n        print(\"─\" * 50)\n        \n        return {\n            'minimo': df['valor_cotacao'].min(),\n            'maximo': df['valor_cotacao'].max(),\n            'media': df['valor_cotacao'].mean(),\n            'desvio': df['valor_cotacao'].std()\n        }"
+  },
+  {
+    "objectID": "posts/post-with-code/index.html#executando-a-consulta",
+    "href": "posts/post-with-code/index.html#executando-a-consulta",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Executando a Consulta",
+    "text": "Executando a Consulta\n\n# Criar consultor para Fevereiro de 2019\nperiodo_consulta = \"022019\"\nconsultor = ConsultadorDolarPTAX(periodo_consulta)"
+  },
+  {
+    "objectID": "posts/post-with-code/index.html#buscar-cotações",
+    "href": "posts/post-with-code/index.html#buscar-cotações",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Buscar Cotações",
+    "text": "Buscar Cotações\n\n# Buscar dados da API\ndados = consultor.buscar_cotacoes()\n\n🔍 Buscando cotações para 022019...\n✅ 20 registros obtidos\n📝 8 dias foram preenchidos com valores anteriores"
+  },
+  {
+    "objectID": "posts/post-with-code/index.html#visualizar-dados",
+    "href": "posts/post-with-code/index.html#visualizar-dados",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Visualizar Dados",
+    "text": "Visualizar Dados\n\n# Exibir primeiras linhas\nif dados is not None:\n    print(\"\\n📋 Primeiras 10 cotações:\")\n    print(dados.head(10).to_string(index=False))\n\n\n📋 Primeiras 10 cotações:\n       dia  valor_cotacao\n2019-02-01         3.6694\n2019-02-02         3.6694\n2019-02-03         3.6694\n2019-02-04         3.6756\n2019-02-05         3.6741\n2019-02-06         3.7019\n2019-02-07         3.7193\n2019-02-08         3.7184\n2019-02-09         3.7184\n2019-02-10         3.7184"
+  },
+  {
+    "objectID": "posts/post-with-code/index.html#estatísticas-do-período",
+    "href": "posts/post-with-code/index.html#estatísticas-do-período",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Estatísticas do Período",
+    "text": "Estatísticas do Período\n\n# Calcular e exibir estatísticas\nif dados is not None:\n    stats = consultor.exibir_estatisticas()\n\n\n📊 ESTATÍSTICAS DO PERÍODO:\n──────────────────────────────────────────────────\n   Valor mínimo:    R$ 3.6694\n   Valor máximo:    R$ 3.7756\n   Valor médio:     R$ 3.7202\n   Desvio padrão:   R$ 0.0281\n   Variação total:  R$ 0.1062\n──────────────────────────────────────────────────"
+  },
+  {
+    "objectID": "posts/post-with-code/index.html#gráfico-interativo",
+    "href": "posts/post-with-code/index.html#gráfico-interativo",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Gráfico Interativo",
+    "text": "Gráfico Interativo\n\n# Gerar visualização\nif dados is not None:\n    grafico = consultor.gerar_grafico()\n    grafico.show()"
+  },
+  {
+    "objectID": "posts/post-with-code/index.html#análise-de-variação-diária",
+    "href": "posts/post-with-code/index.html#análise-de-variação-diária",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Análise de Variação Diária",
+    "text": "Análise de Variação Diária\n\nif dados is not None:\n    # Calcular variação diária\n    dados['variacao'] = dados['valor_cotacao'].diff()\n    dados['variacao_percentual'] = (dados['variacao'] / dados['valor_cotacao'].shift(1)) * 100\n    \n    print(\"\\n📈 MAIORES VARIAÇÕES:\")\n    print(\"\\n🔺 Top 5 Altas:\")\n    top_altas = dados.nlargest(5, 'variacao')[['dia', 'valor_cotacao', 'variacao', 'variacao_percentual']]\n    print(top_altas.to_string(index=False))\n    \n    print(\"\\n🔻 Top 5 Quedas:\")\n    top_quedas = dados.nsmallest(5, 'variacao')[['dia', 'valor_cotacao', 'variacao', 'variacao_percentual']]\n    print(top_quedas.to_string(index=False))\n\n\n📈 MAIORES VARIAÇÕES:\n\n🔺 Top 5 Altas:\n       dia  valor_cotacao  variacao  variacao_percentual\n2019-02-21         3.7595    0.0495             1.334232\n2019-02-14         3.7756    0.0479             1.284975\n2019-02-26         3.7595    0.0310             0.831434\n2019-02-06         3.7019    0.0278             0.756648\n2019-02-11         3.7391    0.0207             0.556691\n\n🔻 Top 5 Quedas:\n       dia  valor_cotacao  variacao  variacao_percentual\n2019-02-15         3.7155   -0.0601            -1.591800\n2019-02-27         3.7351   -0.0244            -0.649022\n2019-02-22         3.7430   -0.0165            -0.438888\n2019-02-25         3.7285   -0.0145            -0.387390\n2019-02-19         3.7206   -0.0110            -0.294780"
+  },
+  {
+    "objectID": "posts/post-with-code/index.html#gráfico-de-variação",
+    "href": "posts/post-with-code/index.html#gráfico-de-variação",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Gráfico de Variação",
+    "text": "Gráfico de Variação\n\nif dados is not None:\n    # Criar gráfico de variação diária\n    fig_var = go.Figure()\n    \n    # Separar variações positivas e negativas\n    var_pos = dados[dados['variacao'] &gt;= 0]\n    var_neg = dados[dados['variacao'] &lt; 0]\n    \n    fig_var.add_trace(go.Bar(\n        x=var_pos['dia'],\n        y=var_pos['variacao'],\n        name='Alta',\n        marker_color='#00a86b'\n    ))\n    \n    fig_var.add_trace(go.Bar(\n        x=var_neg['dia'],\n        y=var_neg['variacao'],\n        name='Queda',\n        marker_color='#e74c3c'\n    ))\n    \n    fig_var.update_layout(\n        title='Variação Diária do Dólar PTAX',\n        xaxis_title='Data',\n        yaxis_title='Variação (R$)',\n        height=400,\n        showlegend=True\n    )\n    \n    fig_var.show()"
+  },
+  {
+    "objectID": "posts/post-with-code/index.html#média-móvel",
+    "href": "posts/post-with-code/index.html#média-móvel",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Média Móvel",
+    "text": "Média Móvel\n\nif dados is not None:\n    # Calcular média móvel de 7 dias\n    dados['media_movel_7'] = dados['valor_cotacao'].rolling(window=7).mean()\n    \n    fig_mm = go.Figure()\n    \n    fig_mm.add_trace(go.Scatter(\n        x=dados['dia'],\n        y=dados['valor_cotacao'],\n        mode='lines',\n        name='Cotação Diária',\n        line=dict(color='lightgray', width=1)\n    ))\n    \n    fig_mm.add_trace(go.Scatter(\n        x=dados['dia'],\n        y=dados['media_movel_7'],\n        mode='lines',\n        name='Média Móvel (7 dias)',\n        line=dict(color='#e74c3c', width=3)\n    ))\n    \n    fig_mm.update_layout(\n        title='Cotação vs Média Móvel (7 dias)',\n        xaxis_title='Data',\n        yaxis_title='Valor (R$)',\n        height=450\n    )\n    \n    fig_mm.show()"
+  },
+  {
+    "objectID": "posts/post-with-code/index.html#comparação-com-outro-período",
+    "href": "posts/post-with-code/index.html#comparação-com-outro-período",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Comparação com Outro Período",
+    "text": "Comparação com Outro Período\n\n# Consultar outro período para comparação\nperiodo_2 = \"022020\"  # Fevereiro de 2020\nconsultor_2 = ConsultadorDolarPTAX(periodo_2)\ndados_2 = consultor_2.buscar_cotacoes()\n\n🔍 Buscando cotações para 022020...\n✅ 18 registros obtidos\n📝 9 dias foram preenchidos com valores anteriores\n\n\n\n# Comparar os dois períodos\nif dados_2 is not None:\n    fig_comp = go.Figure()\n    \n    fig_comp.add_trace(go.Scatter(\n        x=list(range(len(dados))),\n        y=dados['valor_cotacao'],\n        mode='lines',\n        name='Fevereiro 2019',\n        line=dict(color='#3498db', width=2)\n    ))\n    \n    fig_comp.add_trace(go.Scatter(\n        x=list(range(len(dados_2))),\n        y=dados_2['valor_cotacao'],\n        mode='lines',\n        name='Fevereiro 2020',\n        line=dict(color='#e74c3c', width=2)\n    ))\n    \n    fig_comp.update_layout(\n        title='Comparação: Fevereiro 2019 vs 2020',\n        xaxis_title='Dia do Mês',\n        yaxis_title='Cotação (R$)',\n        height=450\n    )\n    \n    fig_comp.show()\n    \n    print(\"\\n📊 COMPARAÇÃO ENTRE PERÍODOS:\")\n    print(f\"  Fev/2019 - Média: R$ {dados['valor_cotacao'].mean():.4f}\")\n    print(f\"  Fev/2020 - Média: R$ {dados_2['valor_cotacao'].mean():.4f}\")\n    print(f\"  Diferença: R$ {dados_2['valor_cotacao'].mean() - dados['valor_cotacao'].mean():.4f}\")\n    print(f\"  Variação %: {((dados_2['valor_cotacao'].mean() / dados['valor_cotacao'].mean()) - 1) * 100:.2f}%\")\n\n                            \n                                            \n\n\n\n📊 COMPARAÇÃO ENTRE PERÍODOS:\n  Fev/2019 - Média: R$ 3.7202\n  Fev/2020 - Média: R$ 4.3502\n  Diferença: R$ 0.6300\n  Variação %: 16.93%"
+  },
+  {
+    "objectID": "posts/post-with-code/index.html#conclusão",
+    "href": "posts/post-with-code/index.html#conclusão",
+    "title": "Análise de Cotações do Dólar PTAX",
+    "section": "Conclusão",
+    "text": "Conclusão\nEste sistema demonstra como consumir APIs públicas brasileiras para análise financeira, combinando processamento de dados com visualizações profissionais e análises estatísticas.\n\nTags: #API #Finanças #Python #DataViz #BancoCentral"
+  }
+]
